@@ -1,32 +1,35 @@
-# tt_gutenberg/authors.py
+# tt_gutenberg/utils.py
 import pandas as pd
-from .utils import load_authors_dataset, clean_alias_data
+from pathlib import Path
 
-def list_authors(by_languages=True, alias=True):
+def load_authors_dataset(local_path="data/authors.csv",
+                         remote_url="https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-07-19/authors.csv"):
     """
-    Return a list of author aliases ordered by translation count (descending).
-    by_languages=True: use translation count column.
-    alias=True: return alias column rather than main author name.
+    Load the authors dataset. Tries local CSV first, 
+    then remote URL. Raises a clear error if both fail.
     """
+    # First try local
+    local_file = Path(local_path)
+    if local_file.exists():
+        return pd.read_csv(local_file)
 
-    # Load and clean
-    df = load_authors_dataset()
-    df = clean_alias_data(df)
+    # Then try remote URL
+    try:
+        return pd.read_csv(remote_url)
+    except Exception as e:
+        raise RuntimeError(
+            f"Could not load authors dataset from {local_path} or {remote_url}. "
+            f"Error was: {e}"
+        )
 
-    # Pick which column to count. 
-    count_col = 'translations' if by_languages else 'books'
-
-    if count_col not in df.columns:
-        # fallback if column name differs
-        count_col = [c for c in df.columns if 'trans' in c.lower()][0]
-
-    # Group by alias or author
-    group_field = 'alias' if alias else 'author'
-
-    counts = (
-        df.groupby(group_field)[count_col]
-        .sum()
-        .sort_values(ascending=False)
-    )
-
-    return counts.index.tolist()
+def clean_alias_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean alias / author fields if needed.
+    """
+    # Drop NaNs
+    df = df.copy()
+    if 'alias' in df.columns:
+        df['alias'] = df['alias'].fillna('Unknown').str.strip()
+    if 'author' in df.columns:
+        df['author'] = df['author'].fillna('Unknown').str.strip()
+    return df
