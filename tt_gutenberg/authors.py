@@ -1,35 +1,24 @@
-# tt_gutenberg/utils.py
-import pandas as pd
-from pathlib import Path
+# tt_gutenberg/authors.py
+from typing import List
 
-def load_authors_dataset(local_path="data/authors.csv",
-                         remote_url="https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-07-19/authors.csv"):
-    """
-    Load the authors dataset. Tries local CSV first, 
-    then remote URL. Raises a clear error if both fail.
-    """
-    # First try local
-    local_file = Path(local_path)
-    if local_file.exists():
-        return pd.read_csv(local_file)
+def _get_df():
+    # import inside helper so imports are local and don't trigger cycles
+    from .utils import load_authors_dataset, clean_alias_data
+    df = load_authors_dataset()
+    return clean_alias_data(df)
 
-    # Then try remote URL
-    try:
-        return pd.read_csv(remote_url)
-    except Exception as e:
-        raise RuntimeError(
-            f"Could not load authors dataset from {local_path} or {remote_url}. "
-            f"Error was: {e}"
-        )
+def list_authors(by_languages: bool = True, alias: bool = True) -> List[str]:
+    df = _get_df()
+    count_col = 'translations' if by_languages else 'books'
+    if count_col not in df.columns:
+        trans_cols = [c for c in df.columns if 'trans' in c.lower()]
+        if not trans_cols:
+            raise ValueError("No translation count column found.")
+        count_col = trans_cols[0]
 
-def clean_alias_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clean alias / author fields if needed.
-    """
-    # Drop NaNs
-    df = df.copy()
-    if 'alias' in df.columns:
-        df['alias'] = df['alias'].fillna('Unknown').str.strip()
-    if 'author' in df.columns:
-        df['author'] = df['author'].fillna('Unknown').str.strip()
-    return df
+    group_field = 'alias' if alias else 'author'
+    if group_field not in df.columns:
+        raise ValueError(f"No column '{group_field}' in dataset.")
+
+    counts = df.groupby(group_field)[count_col].sum().sort_values(ascending=False)
+    return counts.index.tolist()
